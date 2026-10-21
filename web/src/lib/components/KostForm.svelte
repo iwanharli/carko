@@ -123,7 +123,7 @@
         <section class="kf-sumber">
           <span class="kf-sec"><Icon name="link" />Sumber iklan</span>
           <div class="kf-ambil">
-            <input type="url" placeholder="Tempel link Mamikos, mis. https://mamikos.com/room/…" bind:value={f.link}>
+            <input type="url" placeholder="Tempel link Mamikos, Infokost, atau Cove" bind:value={f.link}>
             <button type="button" class="btn pri" disabled={mengambil} onclick={ambil}>
               <Icon name={mengambil ? 'loader-circle' : 'download'} class={mengambil ? 'spin' : ''} />{mengambil ? 'Mengambil…' : 'Ambil data'}</button>
           </div>

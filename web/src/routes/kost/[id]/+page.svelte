@@ -7,7 +7,7 @@
   import { kunciGedung } from '$lib/gedung.js';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
-  import { api, STATUS, UTAMA, FAS_ICON, ALASAN_SKIP, rp, waNum, masalah, langgar, fotoKost, ukuranFoto } from '$lib/kost.js';
+  import { api, STATUS, UTAMA, FAS_ICON, ALASAN_SKIP, rp, waNum, masalah, langgar, fotoKost, ukuranFoto, sumberKost, teksKamar } from '$lib/kost.js';
   import { isian, konfirmasi } from '$lib/dialog.svelte.js';
   import { bukaForm } from '$lib/form.svelte.js';
 
@@ -21,7 +21,7 @@
       k = a; crit = c; semua = d;
       if (!a.dilihat) api('dilihat', 'POST', { id: a.id });  // membuka detail = sudah dilihat
       // Rincian Mamikos (biaya, aturan, fasilitas, pemilik, ulasan) belum lengkap → ambil sekarang (±2 detik)
-      if (!a.detail_mamikos?.pemilik && a.link?.startsWith('https://mamikos.com/room/'))
+      if (!(a.detail_mamikos?.pemilik || a.detail_mamikos?.sumber) && /mamikos\.com\/room\/|infokost\.id\/listings\/|cove\.id\/listings\//.test(a.link || ''))
         api('segarkan/' + a.id, 'POST').then(b => { if (k?.id === b.id) k = { ...k, detail_mamikos: b.detail_mamikos }; }).catch(() => {});
       // Tipe kamar lain belum pernah dibaca dari Mamikos → baca sekarang (±10 detik)
       if (!a.tipe_lain_at && a.link?.startsWith('https://mamikos.com/room/')) {
@@ -112,7 +112,7 @@
               {#if k.kontak}<a class="btn d-wa" href="https://wa.me/{waNum(k.kontak)}" target="_blank" rel="noopener"><Icon name="message-circle" />Chat {k.kontak}</a>{/if}
             </div>
             <div class="d-aksi-ikon">
-              {#if k.link}<a class="ikon-btn" href={k.link} target="_blank" rel="noopener" title="Buka iklan di Mamikos" aria-label="Buka iklan"><Icon name="external-link" /></a>{/if}
+              {#if k.link}<a class="ikon-btn" href={k.link} target="_blank" rel="noopener" title="Buka iklan di {sumberKost(k)}" aria-label="Buka iklan"><Icon name="external-link" /></a>{/if}
               <button class="ikon-btn" onclick={() => share.buka()} title="Bagikan" aria-label="Bagikan"><Icon name="share-2" /></button>
               <button class="ikon-btn" onclick={edit} title="Edit kost" aria-label="Edit"><Icon name="pencil" /></button>
               <button class="ikon-btn hapus" onclick={hapus} title="Hapus kost" aria-label="Hapus"><Icon name="trash-2" /></button>
@@ -126,7 +126,8 @@
           </div>
           <div class="chips" style="margin-top:14px">
             {#each m as i}<span class="pill bad"><Icon name="circle-x" />{i}</span>{:else}<span class="pill ok"><Icon name="circle-check" />Sesuai semua kriteria</span>{/each}
-            {#if k.kamar_tersedia > 0}<span class="pill ok"><Icon name="door-open" />{k.kamar_tersedia} kamar tersedia</span>{/if}
+            {#if k.kamar_tersedia !== 0 && teksKamar(k)}<span class="pill ok"><Icon name="door-open" />{teksKamar(k)}</span>{/if}
+            <span class="pill"><Icon name="link" />{sumberKost(k)}</span>
             {#if k.rating_mamikos !== ''}<span class="pill"><Icon name="star" class="star" />{k.rating_mamikos} · {k.ulasan || 0} ulasan</span>{/if}
           </div>
 

@@ -2,7 +2,7 @@
   // Kost dalam tampilan list: satu baris ringkas berisi foto, info utama, harga & aksi
   import Icon from './Icon.svelte';
   import DaftarTipe from './DaftarTipe.svelte';
-  import { UTAMA, FAS_ICON, STATUS, rpShort, waNum, masalah, langgar, fotoKost, ukuranFoto } from '$lib/kost.js';
+  import { UTAMA, FAS_ICON, STATUS, rpShort, waNum, masalah, langgar, fotoKost, ukuranFoto, sumberKost, teksKamar } from '$lib/kost.js';
 
   let { k, crit, varian = [], onVarian, onUbah, onSkip, onEdit, onFoto } = $props();
   const foto = $derived(fotoKost(k));
@@ -24,14 +24,15 @@
     </div>
     <div class="row-sub">
       <span class="tipe tipe-{k.tipe.toLowerCase()}" class:langgar={lg.tipe}>{k.tipe}</span>
+      <i class="sep"></i>{sumberKost(k)}
       {#if k.ukuran}<i class="sep"></i>{k.ukuran}{/if}
       {#if k.rating_mamikos !== ''}<i class="sep"></i><span class="row-rating"><Icon name="star" class="star" />{k.rating_mamikos}</span>{/if}
       {#if k.alamat}<i class="sep"></i><span class="row-alamat">{k.alamat}</span>{/if}
     </div>
     <div class="row-fas">
       {#each UTAMA as f}<span class="fas-ic" class:ada={fas.includes(f)} title="{f}{fas.includes(f) ? '' : ' — tidak ada'}"><Icon name={FAS_ICON[f]} />{f}</span>{/each}
-      {#if k.kamar_tersedia !== ''}
-        <span class="fas-ic" class:ada={k.kamar_tersedia > 0}><Icon name={k.kamar_tersedia > 0 ? 'door-open' : 'door-closed'} />{k.kamar_tersedia > 0 ? `${k.kamar_tersedia} kamar kosong` : 'Penuh'}</span>
+      {#if teksKamar(k)}
+        <span class="fas-ic" class:ada={k.kamar_tersedia !== 0}><Icon name={k.kamar_tersedia === 0 ? 'door-closed' : 'door-open'} />{teksKamar(k)}</span>
       {/if}
     </div>
     <DaftarTipe anggota={varian.length ? varian : [k]} {crit} dipilih={k.id} onPilih={onVarian} />

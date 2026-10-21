@@ -3,6 +3,7 @@ import express from 'express';
 import compression from 'compression';
 import pg from 'pg';
 import { cariMamikos, tipeLainMamikos } from './engine.js';
+import { sumberDari, ambilInfokost, ambilCove, cariInfokost, cariCove } from './sumber.js';
 import { fileURLToPath } from 'node:url';
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { mkdir, readFile, writeFile, stat } from 'node:fs/promises';
@@ -157,6 +158,9 @@ const FAS_KEYWORDS = {
   'Parkir motor': /parkir motor/i,
 };
 async function ambil(url) {
+  // Infokost (termasuk Rukita) & Cove punya pembaca sendiri; Mamikos & situs lain lewat pembaca HTML umum di bawah
+  if (sumberDari(url) === 'infokost') return withJarak(await ambilInfokost(url));
+  if (sumberDari(url) === 'cove') return withJarak(await ambilCove(url));
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/130 Safari/537.36' } });
   if (!res.ok) throw new Error(`Halaman merespons ${res.status}`);
   const html = await res.text();
@@ -359,12 +363,14 @@ async function kumpulkan(links, { reset = true, finish = true } = {}) {
 // Cek ulang kost Mamikos yang sudah tersimpan: perbarui kamar tersedia & harga
 async function perbarui() {
   const { rows } = await pool.query(`SELECT id, nama, link, harga, kamar_tersedia FROM kost
-    WHERE link LIKE 'https://mamikos.com/room/%' AND pilihan IS DISTINCT FROM 'skip' ORDER BY dicek_ulang_at NULLS FIRST`);
+    WHERE (link LIKE 'https://mamikos.com/room/%' OR link LIKE 'https://infokost.id/listings/%' OR link LIKE 'https://cove.id/listings/%')
+      AND pilihan IS DISTINCT FROM 'skip' ORDER BY dicek_ulang_at NULLS FIRST`);
   Object.assign(job, { phase: 'Cek ulang kost tersimpan', total: rows.length, done: 0 });
   for (const k of rows) {
     try {
       const b = await ambil(normLink(k.link));
-      const tersedia = b.kamar_tersedia ?? k.kamar_tersedia, harga = b.harga || k.harga;
+      // null = tersedia tanpa jumlah pasti (Infokost/Cove); undefined = tidak terbaca → pakai nilai lama
+      const tersedia = b.kamar_tersedia !== undefined ? b.kamar_tersedia : k.kamar_tersedia, harga = b.harga || k.harga;
       if (k.kamar_tersedia > 0 && tersedia === 0) note(`🔴 ${k.nama} sekarang penuh`);
       else if (k.kamar_tersedia === 0 && tersedia > 0) note(`🟢 ${k.nama} ada ${tersedia} kamar kosong lagi`);
       if (harga !== k.harga) note(`💰 ${k.nama}: ${rpTxt(k.harga)} → ${rpTxt(harga)}`);
@@ -373,6 +379,7 @@ async function perbarui() {
         rating_mamikos=COALESCE($5, rating_mamikos), ulasan=COALESCE($6, ulasan),
         detail_mamikos=CASE WHEN $7::jsonb ? 'biaya' THEN $7::jsonb ELSE detail_mamikos END WHERE id=$3`,
         [tersedia, harga, k.id, b.galeri || [], b.rating_mamikos ?? null, b.ulasan ?? null, JSON.stringify(b.detail_mamikos || {})]);
+      if (b.tipe_lain) await pool.query('UPDATE kost SET tipe_lain=$1, tipe_lain_at=now() WHERE id=$2', [JSON.stringify(b.tipe_lain), k.id]);
     } catch (e) { job.failed++; note(`! gagal cek ulang: ${k.nama} (${e.message})`); }
     finally { job.done++; await sleep(2000); }
   }
@@ -420,7 +427,22 @@ async function jalankanEngine() {
     const skip = new Set(cek.map(r => normLink(r.link)));
     const baru = [...new Set(rooms.filter(r => r.url && r.tersedia > 0 && (!c.budget || !r.harga || r.harga <= c.budget)).map(r => normLink(r.url)))]
       .filter(u => !skip.has(u));
-    note(`Mamikos: ${kotak} kotak area dicari${terpotong ? ` (${terpotong} terpotong)` : ''}, ${rooms.length} kost unik, ${rooms.filter(r => r.tersedia > 0).length} ada kamar kosong, ${baru.length} belum pernah dicek` + (baru.length > c.auto_maks ? ` (dicek ${c.auto_maks} dulu)` : ''));
+    note(`Mamikos: ${kotak} kotak area dicari${terpotong ? ` (${terpotong} terpotong)` : ''}, ${rooms.length} kost unik, ${rooms.filter(r => r.tersedia > 0).length} ada kamar kosong, ${baru.length} belum pernah dicek`);
+    // Infokost & Cove: daftarnya jarang berubah, jadi cukup dicari sekali sehari
+    const { rows: [jadwal] } = await pool.query(`SELECT nilai FROM pengaturan_app WHERE kunci = 'sumber_lain_at'`);
+    if (!jadwal || Date.now() - new Date(jadwal.nilai) > 20 * 3600e3) {
+      for (const [nama, cari] of [['Infokost', () => cariInfokost({ budget: c.budget, log: note })],
+        ['Cove', () => cariCove({ budget: c.budget, lat: c.kerja_lat, lng: c.kerja_lng, radius: +c.jarak || 0, log: note })]]) {
+        job.phase = `Mencari di ${nama}`;
+        try {
+          const lain = (await cari()).map(normLink).filter(u => !skip.has(u) && !baru.includes(u));
+          note(`${nama}: ${lain.length} kost ≤ budget belum pernah dicek`);
+          baru.push(...lain);
+        } catch (e) { note(`! ${nama} gagal: ${e.message}`); }
+      }
+      await pool.query(`INSERT INTO pengaturan_app (kunci, nilai) VALUES ('sumber_lain_at', now()::text) ON CONFLICT (kunci) DO UPDATE SET nilai = now()::text`);
+    }
+    if (baru.length > c.auto_maks) note(`Total ${baru.length} kost baru, dicek ${c.auto_maks} dulu`);
     await kumpulkan(baru.slice(0, c.auto_maks), { reset: false, finish: false });
     await perbarui();
     // Dicatat hanya bila selesai: kalau terputus (server restart), engine jalan lagi saat server menyala
@@ -505,8 +527,8 @@ app.use(express.static(WEB, { index: false }))
 
 app.post('/api/kumpulkan', (req, res) => {
   if (job.running) return res.status(409).json({ error: 'Masih memproses daftar sebelumnya' });
-  const links = [...new Set((req.body.links || []).filter(l => /^https:\/\/mamikos\.com\/room\//.test(l)).map(normLink))];
-  if (!links.length) return res.status(400).json({ error: 'Tidak ada link kamar Mamikos' });
+  const links = [...new Set((req.body.links || []).filter(l => sumberDari(l)).map(normLink))];
+  if (!links.length) return res.status(400).json({ error: 'Tidak ada link kost dari Mamikos, Infokost, atau Cove' });
   kumpulkan(links);
   res.json({ total: links.length });
 });
@@ -525,7 +547,8 @@ app.post('/api/engine', (_, res) => {
 // ── Salinan foto: foto Mamikos disimpan di disk saat pertama dibuka, agar tetap tampil walau Mamikos memblokir / iklan dihapus ──
 const FOTO_DIR = path.resolve(process.env.FOTO_DIR || fileURLToPath(new URL('./data/foto', import.meta.url)));
 await mkdir(FOTO_DIR, { recursive: true });
-const fotoBoleh = u => { try { const x = new URL(u); return x.protocol === 'https:' && x.hostname === 'static.mamikos.com'; } catch { return false; } };
+const HOST_FOTO = ['static.mamikos.com', 'images.rukita.co', 'media.coveliving.io'];
+const fotoBoleh = u => { try { const x = new URL(u); return x.protocol === 'https:' && HOST_FOTO.includes(x.hostname); } catch { return false; } };
 const fotoBerkas = u => path.join(FOTO_DIR, createHash('sha1').update(u).digest('hex') + (path.extname(new URL(u).pathname).toLowerCase().match(/^\.(jpe?g|png|webp)$/) ? path.extname(new URL(u).pathname).toLowerCase() : '.jpg'));
 // Kembalikan path berkas salinan (unduh dulu bila belum ada); null bila gagal dan belum ada salinan
 async function salinanFoto(u) {
@@ -546,7 +569,8 @@ const FOTO_DAFTAR = 3;
 const ringkasDaftar = r => {
   const k = row(r), d = k.detail_mamikos || {};
   return { ...k, galeri: (k.galeri || []).slice(0, FOTO_DAFTAR), galeri_total: (k.galeri || []).length,
-    detail_mamikos: { aturan: d.aturan || [], biaya: { min_bulan: d.biaya?.min_bulan ?? null, termasuk: d.biaya?.termasuk || [] }, jumlah_ulasan: d.jumlah_ulasan || 0 } };
+    detail_mamikos: { aturan: d.aturan || [], biaya: { min_bulan: d.biaya?.min_bulan ?? null, termasuk: d.biaya?.termasuk || [] }, jumlah_ulasan: d.jumlah_ulasan || 0,
+      sumber: d.sumber || 'mamikos', tersedia: d.tersedia ?? null } };
 };
 app.get('/api/kost', async (_, res) => {
   const { rows } = await pool.query('SELECT * FROM kost ORDER BY id');
@@ -640,7 +664,7 @@ app.post('/api/hitung-jarak', (_, res) => { hitungUlangJarak(); res.json({ ok: t
 app.post('/api/segarkan/:id', async (req, res) => {
   const { rows: [k] } = await pool.query('SELECT * FROM kost WHERE id=$1', [req.params.id]);
   if (!k) return res.sendStatus(404);
-  if (!/^https:\/\/mamikos\.com\/room\//.test(k.link || '')) return res.json(row(k));
+  if (!sumberDari(k.link || '')) return res.json(row(k));
   try {
     const b = await ambil(normLink(k.link));
     const { rows: [s] } = await pool.query(`UPDATE kost SET detail_mamikos=$1, kamar_tersedia=COALESCE($2, kamar_tersedia) WHERE id=$3 RETURNING *`,

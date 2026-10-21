@@ -62,7 +62,7 @@ const UKURAN = { kecil: '240x320', sedang: '360x480', besar: '540x720' };
 // Foto Mamikos dilewatkan ke /api/foto: server menyimpan salinannya, jadi tetap tampil walau Mamikos memblokir / iklan dihapus
 export const ukuranFoto = (url, u) => {
   const x = String(url).replace(/-(240x320|360x480|540x720)\.(jpe?g|png|webp)$/i, `-${UKURAN[u]}.$2`);
-  return /^https:\/\/static\.mamikos\.com\//.test(x) ? '/api/foto?u=' + encodeURIComponent(x) : x;
+  return /^https:\/\/(static\.mamikos\.com|images\.rukita\.co|media\.coveliving\.io)\//.test(x) ? '/api/foto?u=' + encodeURIComponent(x) : x;
 };
 
 // Label tipe kamar: bagian nama yang berbeda antar varian, misal "Tipe A" dari "Kost D Daunan Tipe A Jagakarsa"
@@ -85,3 +85,9 @@ export function pisahNama(k) {
   const daerah = kata.slice(akhir).join(' ') || (k.alamat || '').split(',').slice(0, 2).join(',').trim();
   return { nama: kata.slice(0, akhir).join(' '), daerah };
 }
+
+// Situs asal iklan, dari link-nya
+export const sumberKost = k => (/infokost\.id/.test(k.link || '') ? 'Infokost' : /cove\.id/.test(k.link || '') ? 'Cove' : /mamikos\.com/.test(k.link || '') ? 'Mamikos' : k.link ? 'Lainnya' : 'Manual');
+// Teks ketersediaan: jumlah kamar (Mamikos) atau sekadar tersedia/penuh (Infokost, Cove)
+export const teksKamar = k => k.kamar_tersedia === 0 ? 'Kamar penuh' : k.kamar_tersedia > 0 ? `${k.kamar_tersedia} kamar tersedia`
+  : k.detail_mamikos?.tersedia ? 'Kamar tersedia' : null;

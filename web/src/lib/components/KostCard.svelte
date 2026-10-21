@@ -2,7 +2,7 @@
   // Kartu kost di daftar. `varian` = tipe kamar lain di gedung yang sama (digabung jadi satu kartu).
   import Icon from './Icon.svelte';
   import DaftarTipe from './DaftarTipe.svelte';
-  import { api, UTAMA, FAS_ICON, STATUS, rpShort, waNum, tanggalPendek, masalah, langgar, fotoKost, ukuranFoto, pisahNama } from '$lib/kost.js';
+  import { api, UTAMA, FAS_ICON, STATUS, rpShort, waNum, tanggalPendek, masalah, langgar, fotoKost, ukuranFoto, pisahNama, sumberKost, teksKamar } from '$lib/kost.js';
 
   let { k, crit, varian = [], onVarian, onUbah, onSkip, onEdit, onFoto } = $props();
   let slide = $state(0), penuh = $state(null);
@@ -45,6 +45,7 @@
     <div class="kc-meta">
       <span class="kc-tipe tipe-{k.tipe.toLowerCase()}" class:langgar={lg.tipe}>{k.tipe}</span>
       {#if k.rating_mamikos !== ''}<span class="kc-rating"><Icon name="star" />{k.rating_mamikos.toLocaleString('id-ID', { minimumFractionDigits: 1 })}<small>({k.ulasan || 0})</small></span>{/if}
+      <span class="kc-sumber">{sumberKost(k)}</span>
       {#if !k.dilihat}<span class="pill baru"><Icon name="sparkles" />Baru</span>{/if}
     </div>
 
@@ -55,9 +56,9 @@
       {#each UTAMA as f}<span class:ada={fas.includes(f)} title="{f}{fas.includes(f) ? '' : ' — tidak ada'}"><Icon name={FAS_ICON[f]} />{f}</span>{/each}
     </div>
 
-    {#if k.kamar_tersedia !== ''}
+    {#if teksKamar(k)}
       <p class="kc-kamar" class:penuh={k.kamar_tersedia === 0}>
-        <Icon name={k.kamar_tersedia > 0 ? 'door-open' : 'door-closed'} />{k.kamar_tersedia > 0 ? `${k.kamar_tersedia} kamar tersedia` : 'Kamar penuh'}
+        <Icon name={k.kamar_tersedia === 0 ? 'door-closed' : 'door-open'} />{teksKamar(k)}
         {#if k.dicek_ulang_at}<small>· dicek {tanggalPendek(k.dicek_ulang_at)}</small>{/if}
       </p>
     {/if}
@@ -119,7 +120,8 @@
   .kc-rating { display: inline-flex; align-items: center; gap: 3px; font-weight: 600; }
   .kc-rating :global(svg.lucide) { width: 13px; height: 13px; color: #f59e0b; fill: #f59e0b; }
   .kc-rating small { color: var(--muted); font-weight: 400; margin-left: 1px; }
-  .kc-meta :global(.pill.baru) { margin: 0 0 0 auto; }
+  .kc-sumber { margin-left: auto; font-size: 10.5px; font-weight: 600; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 1px 7px; }
+  .kc-meta :global(.pill.baru) { margin: 0; }
   h3 { margin: 0; font-size: 15.5px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   h3 a { color: var(--text); }
   h3 a:hover { color: var(--pri); text-decoration: none; }
