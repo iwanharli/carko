@@ -1,5 +1,17 @@
 # Deploy CARKO (tanpa Docker)
 
+## Deploy cepat (server yang sudah terpasang)
+
+CARKO saat ini berjalan di **https://carko.kecup.in** (PM2: `carko-8041`, folder `/var/www/carko`). Untuk mengirim perubahan:
+
+```bash
+cp .env.deploy.example .env.deploy   # sekali saja, lalu isi (tidak ikut git)
+./deploy.sh                          # push → git pull → install → build → pm2 restart → cek kesehatan
+./deploy.sh --cepat                  # lewati npm ci bila dependensi tidak berubah
+```
+
+Panduan di bawah untuk memasang CARKO di server baru.
+
 CARKO butuh **Node.js 22**, **PostgreSQL**, dan **Chromium** (untuk engine). Panduan ini untuk VPS Ubuntu/Debian.
 
 ## Kebutuhan server
@@ -65,6 +77,14 @@ sudo -u carko npm run akun -- hapus budi        # hapus akun (sesinya ikut berak
 ```
 
 ## 6. Jalankan sebagai layanan
+
+**Dengan PM2** (dipakai di server sekarang):
+
+```bash
+cd /opt/carko && pm2 start server.js --name carko --time --max-memory-restart 1500M && pm2 save
+```
+
+**Atau dengan systemd:**
 
 ```bash
 sudo cp deploy/carko.service /etc/systemd/system/
