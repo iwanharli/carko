@@ -1,0 +1,19 @@
+# Layanan systemd untuk CARKO di server Linux.
+# Pasang: sudo cp deploy/carko.service /etc/systemd/system/ && sudo systemctl enable --now carko
+[Unit]
+Description=CARKO - Cari Kost
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=carko
+WorkingDirectory=/opt/carko
+EnvironmentFile=/opt/carko/.env
+Environment=NODE_ENV=production TZ=Asia/Jakarta
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
